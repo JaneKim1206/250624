@@ -1,77 +1,101 @@
 import streamlit as st
 import pandas as pd
 
-def app():
-    st.title('대한민국 연령대별 인구 분포 (상위 5개 행정구역 기준)')
-
-    # 데이터 불러오기 ('euc-kr' 인코딩 사용)
-    df = pd.read_csv('202505_202505_연령별인구현황_월간.csv', encoding='euc-kr')
-
-    # 행정구역 정제
-    df['행정구역'] = df['행정구역'].astype(str).str.split(' ').str[0]
-
-    # 열 이름 정제
-    new_columns = []
-    for col in df.columns:
-        if '2025년05월_계_' in col:
-            new_columns.append(col.replace('2025년05월_계_', ''))
-        elif '2025년05월_남_' in col:
-            new_columns.append('남_' + col.replace('2025년05월_남_', ''))
-        elif '2025년05월_여_' in col:
-            new_columns.append('여_' + col.replace('2025년05월_여_', ''))
+def 정제_열이름(df, 접두사):
+    """열 이름에서 접두사 제거하고 나이만 남기기"""
+    새로운_열 = []
+    for 열 in df.columns:
+        if 열.startswith(접두사):
+            label = 열.replace(접두사, '')
+            if '총인구수' in label:
+                새로운_열.append('총인구수')
+            elif '연령구간인구수' in label:
+                새로운_열.append('연령구간인구수')
+            else:
+                새로운_열.append(label)
         else:
-            new_columns.append(col)
-    df.columns = new_columns
+            새로운_열.append(열)
+    df.columns = 새로운_열
+    return df
 
-    # 숫자형 변환
-    numeric_cols = [col for col in df.columns if col != '행정구역']
-    for col in numeric_cols:
-        df[col] = df[col].astype(str).str.replace(',', '', regex=False).astype(int)
+def 숫자_형변환(df):
+    """쉼표 제거 후 숫자형 변환"""
+    숫자열 = [열 for 열 in df.columns if 열 != '행정구역']
+    for 열 in 숫자열:
+        df[열] = df[열].astype(str).str.replace(',', '', regex=False).astype(int)
+    return df
 
-    # 상위 5개 지역 추출
-    top5_regions = df.sort_values(by='총인구수', ascending=False).head(5)['행정구역'].tolist()
-    df_top5 = df[df['행정구역'].isin(top5_regions)].copy()
+def app():
+    st.title("📊 대한민국 연령대별 인구 분포 (상위 5개 행정구역 기준)")
 
-    # -----------------------------
-    # 📊 전체 인구 기준 연령 분포
-    # -----------------------------
-    st.write("---")
-    st.header("원본 데이터")
-    st.dataframe(df)
+    # ⬇️ 전체 인구 파일
+    df_전체 = pd.read_csv('202505_202505_연령별인구현황_월간.csv', encoding='euc-kr')
+    df_전체['행정구역'] = df_전체['행정구역'].astype(str).str.split(' ').str[0]
+    df_전체 = 정제_열이름(df_전체, '2025년05월_계_')
+    df_전체 = 숫자_형변환(df_전체)
 
-    st.write("---")
-    st.header("상위 5개 행정구역의 연령대별 총인구 분포")
-    df_total = df_top5.melt(id_vars=['행정구역'], 
-                            value_vars=[col for col in df_top5.columns if col.isdigit()],
-                            var_name='연령', 
-                            value_name='인구수')
-    df_total['연령'] = df_total['연령'].astype(int)
-    total_pivot = df_total.pivot_table(index='연령', columns='행정구역', values='인구수')
-    st.line_chart(total_pivot)
+    # ⬇️ 성별 인구 파일
+    df_성별 = pd.read_csv('202505_202505_연령별인구현황_월간 (1).csv', encoding='euc-kr')
+    df_성별['행정구역'] = df_성별['행정구역'].astype(str).str.split(' ').str[0]
 
-    # -----------------------------
-    # 👩‍🦰👨‍🦱 성별 인구 분포
-    # -----------------------------
-    st.write("---")
-    st.header("상위 5개 행정구역의 연령대별 성별 인구 분포")
+    # 열 이름 정제 (남/여)
+    열목록 = []
+    for 열 in df_성별.columns:
+        if 열.startswith('2025년05월_남_'):
+            열목록.append('남_' + 열.replace('2025년05월_남_', ''))
+        elif 열.startswith('2025년05월_여_'):
+            열목록.append('여_' + 열.replace('2025년05월_여_', ''))
+        else:
+            열목록.append(열)
+    df_성별.columns = 열목록
+    df_성별 = 숫자_형변환(df_성별)
 
-    gender_cols = [col for col in df_top5.columns if col.startswith('남_') or col.startswith('여_')]
-    df_gender = df_top5.melt(id_vars=['행정구역'], 
-                             value_vars=gender_cols, 
-                             var_name='성별연령', 
+    # 상위 5개 행정구역 선정 (총인구 기준)
+    상위5 = df_전체.sort_values(by='총인구수', ascending=False).head(5)['행정구역'].tolist()
+    df_전체_상위5 = df_전체[df_전체['행정구역'].isin(상위5)].copy()
+    df_성별_상위5 = df_성별[df_성별['행정구역'].isin(상위5)].copy()
+
+    # ---------------------------------------
+    # 🔵 전체 인구 - 연령대별 선그래프
+    # ---------------------------------------
+    st.subheader("🔹 상위 5개 행정구역의 연령대별 총인구 분포")
+
+    df_전체_변환 = df_전체_상위5.melt(
+        id_vars=['행정구역', '총인구수', '연령구간인구수'],
+        var_name='연령',
+        value_name='인구수'
+    )
+    df_전체_변환['연령'] = df_전체_변환['연령'].str.extract(r'(\d+)').astype(int)
+
+    피벗_전체 = df_전체_변환.pivot_table(index='연령', columns='행정구역', values='인구수')
+    st.line_chart(피벗_전체)
+
+    # ---------------------------------------
+    # 🧑‍🦰 성별 인구 선택 및 시각화
+    # ---------------------------------------
+    st.subheader("🔹 상위 5개 행정구역의 연령대별 성별 인구 분포")
+    성별_선택 = st.radio("성별 선택", options=['남', '여'], horizontal=True)
+
+    # 남_ 또는 여_로 시작하는 열만 추출
+    선택열 = [열 for 열 in df_성별_상위5.columns if 열.startswith(성별_선택 + '_')]
+    df_선택 = df_성별_상위5[['행정구역'] + 선택열].copy()
+
+    df_성별변환 = df_선택.melt(id_vars=['행정구역'],
+                             var_name='연령',
                              value_name='인구수')
+    df_성별변환['연령'] = df_성별변환['연령'].str.extract(r'(\d+)').astype(int)
 
-    # 성별과 연령 분리
-    df_gender['성별'] = df_gender['성별연령'].str.extract(r'(남|여)')
-    df_gender['연령'] = df_gender['성별연령'].str.extract(r'(\d+)').astype(int)
-    df_gender = df_gender.drop(columns='성별연령')
+    피벗_성별 = df_성별변환.pivot_table(index='연령', columns='행정구역', values='인구수')
+    st.line_chart(피벗_성별)
 
-    # 사용자 선택: 성별
-    selected_gender = st.radio("성별을 선택하세요", ('남', '여'))
-
-    df_selected = df_gender[df_gender['성별'] == selected_gender]
-    gender_pivot = df_selected.pivot_table(index='연령', columns='행정구역', values='인구수')
-    st.line_chart(gender_pivot)
+    # ---------------------------------------
+    # 🔍 원본 데이터 보기
+    # ---------------------------------------
+    with st.expander("🔍 원본 데이터 보기"):
+        st.write("전체 인구 데이터")
+        st.dataframe(df_전체)
+        st.write("성별 인구 데이터")
+        st.dataframe(df_성별)
 
 if __name__ == '__main__':
     app()

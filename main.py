@@ -53,3 +53,37 @@ def app():
 
 if __name__ == '__main__':
     app()
+import streamlit as st
+import pandas as pd
+
+def app():
+    st.title('대한민국 연령대별 인구 분포 (상위 5개 행정구역 기준)')
+
+    # 데이터 불러오기 ('euc-kr' 인코딩 사용)
+    df = pd.read_csv('202505_202505_연령별인구현황_월간.csv', encoding='euc-kr')
+
+    # 행정구역 정제
+    df['행정구역'] = df['행정구역'].astype(str).str.split(' ').str[0]
+
+    # 열 이름 정제
+    new_columns = []
+    for col in df.columns:
+        if '2025년05월_계_' in col:
+            new_columns.append(col.replace('2025년05월_계_', ''))
+        elif '2025년05월_남_' in col:
+            new_columns.append('남_' + col.replace('2025년05월_남_', ''))
+        elif '2025년05월_여_' in col:
+            new_columns.append('여_' + col.replace('2025년05월_여_', ''))
+        else:
+            new_columns.append(col)
+    df.columns = new_columns
+
+    # 숫자형 변환
+    numeric_cols = [col for col in df.columns if col != '행정구역']
+    for col in numeric_cols:
+        df[col] = df[col].astype(str).str.replace(',', '', regex=False).astype(int)
+
+    # 상위 5개 지역 추출
+    top5_regions = df.sort_values(by='총인구수', ascending=False).head(5)['행정구역'].tolist()
+    df_top5 = df[df['행정구역'].isi]()_
+    
